@@ -17,10 +17,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
+      # This repository intentionally does not commit a lockfile yet.
+      # npm ci and setup-node's npm cache both require package-lock.json,
+      # so npm install is used until a lockfile is generated and committed.
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run tests
         run: npm test
