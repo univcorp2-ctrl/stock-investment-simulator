@@ -1,19 +1,46 @@
 # Stock Investment Simulator
 
-実際の過去株価を使って、株式投資の結果をシミュレーションできる Web アプリです。
+実株価を使って、自動売買ロジックのバックテストと長期投資シミュレーションを行う Web アプリです。
+
+> このアプリは教育・検証目的のシミュレーターです。証券会社への実注文発注機能は入れていません。投資助言ではありません。
+
+## 主な機能
+
+- Stooq の日足 CSV から実際の過去株価を取得
+- 自動売買バックテスト
+  - SMA ゴールデンクロス / デッドクロス
+  - RSI 逆張り
+  - ブレイクアウト
+- リスク管理
+  - 損切り
+  - 利確
+  - トレーリングストップ
+  - 手数料・スリッページ
+  - 投資比率
+- 結果分析
+  - 最終評価額
+  - 自動売買リターン
+  - Buy & Hold 比較
+  - 最大ドローダウン
+  - 勝率
+  - 取引回数
+  - エクスポージャー
+  - 損益付きトレードログ
+- テスト
+  - 売買エンジン
+  - テクニカル指標
+  - Stooq CSV パーサー
+  - DCA シミュレーション
+- GitHub Actions CI
+  - `npm test`
+  - `npm run build`
+
+## 技術構成
 
 - フロントエンド: React + Vite + TypeScript
 - API: Express + TypeScript
-- 株価データ: Stooq の日足 CSV（無料・API キー不要）
 - テスト: Vitest
-- CI: GitHub Actions で `npm test` と `npm run build`
-
-## できること
-
-- ティッカー、期間、初期投資額、毎月積立額を入力
-- 一括投資 / 毎月積立を切り替え
-- 実際の終値データから最終評価額、投資元本、損益率、保有株数を計算
-- 評価額推移を簡易チャートで表示
+- データ: Stooq 日足 CSV
 
 ## セットアップ
 
@@ -22,13 +49,15 @@ npm install
 npm run dev
 ```
 
-起動後、ブラウザで Vite の URL を開いてください。API は `http://localhost:3001`、フロントは Vite 側で `/api` をプロキシします。
+起動後、Vite の URL をブラウザで開いてください。
 
-## 使い方
+- API: `http://localhost:3001`
+- フロント: Vite dev server
+- フロントから `/api` へのアクセスは Vite proxy で API に転送されます。
 
-ティッカーは Stooq 形式を推奨します。
+## ティッカー例
 
-例:
+Stooq 形式を推奨します。
 
 - `AAPL.US`
 - `MSFT.US`
@@ -37,15 +66,27 @@ npm run dev
 
 `.US` などの市場サフィックスを省略した場合は、自動で `.US` を補います。
 
-## テスト
+## テストとビルド
 
 ```bash
 npm test
 npm run build
 ```
 
-GitHub に push すると `.github/workflows/ci.yml` により自動でテストとビルドが実行されます。
+## GitHub Actions の修正内容
+
+初回版では `.github/workflows/ci.yml` で `actions/setup-node` の `cache: npm` と `npm ci` を使っていました。
+
+しかし repo に `package-lock.json` が無かったため、GitHub Actions は次の理由で失敗していました。
+
+- `setup-node` の npm cache は lockfile を探す
+- `npm ci` は lockfile が必須
+- repo に `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` が存在しなかった
+
+そのため、現時点では CI を `npm install` ベースに修正しています。将来的に lockfile を commit する場合は、`npm ci` と npm cache に戻せます。
 
 ## 注意
 
-このアプリは教育・検証目的のシミュレーターです。投資助言ではありません。Stooq のデータは取引所や銘柄によって遅延・欠損があり得ます。
+- 実注文発注や証券会社 API 連携は含めていません。
+- バックテスト結果は将来の運用成績を保証しません。
+- Stooq のデータは銘柄・市場によって遅延や欠損があり得ます。
