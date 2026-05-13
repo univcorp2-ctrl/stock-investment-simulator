@@ -1,13 +1,27 @@
 # Stock Investment Simulator
 
-実株価を使って、自動売買ロジックのバックテストと長期投資シミュレーションを行う Web アプリです。
+実株価を使って、自動売買ロジックのバックテスト、保有銘柄の毎日リターン確認、長期投資シミュレーションを行う Web アプリです。
 
 > このアプリは教育・検証目的のシミュレーターです。証券会社への実注文発注機能は入れていません。投資助言ではありません。
 
 ## 主な機能
 
+### Daily Return Monitor
+
+- 保有銘柄を登録
+  - ティッカー
+  - 株数
+  - 平均取得単価
+- 最新価格を読み込み
+- 前日比、前日比率、評価額、評価損益、総リターンを表示
+- ポートフォリオ合計の評価額、投資元本、損益、総リターンを表示
+- ブラウザの LocalStorage に保有銘柄を保存
+- 60秒ごとの自動更新切り替え
+
+### 自動売買バックテスト
+
 - Stooq の日足 CSV から実際の過去株価を取得
-- 自動売買バックテスト
+- 自動売買ロジック
   - SMA ゴールデンクロス / デッドクロス
   - RSI 逆張り
   - ブレイクアウト
@@ -26,21 +40,14 @@
   - 取引回数
   - エクスポージャー
   - 損益付きトレードログ
-- テスト
-  - 売買エンジン
-  - テクニカル指標
-  - Stooq CSV パーサー
-  - DCA シミュレーション
-- GitHub Actions CI
-  - `npm test`
-  - `npm run build`
 
 ## 技術構成
 
 - フロントエンド: React + Vite + TypeScript
 - API: Express + TypeScript
 - テスト: Vitest
-- データ: Stooq 日足 CSV
+- データ: Stooq CSV
+- CI: GitHub Actions
 
 ## セットアップ
 
@@ -66,12 +73,48 @@ Stooq 形式を推奨します。
 
 `.US` などの市場サフィックスを省略した場合は、自動で `.US` を補います。
 
+## API
+
+### `GET /api/quotes?symbols=AAPL.US,MSFT.US,SPY.US`
+
+複数銘柄の最新価格を返します。
+
+```json
+{
+  "quotes": [
+    {
+      "symbol": "AAPL.US",
+      "date": "2026-05-12",
+      "time": "22:00:09",
+      "open": 210.0,
+      "high": 214.0,
+      "low": 208.5,
+      "close": 212.3,
+      "previousClose": 209.7,
+      "change": 2.6,
+      "changePct": 0.0124,
+      "volume": 48200123
+    }
+  ]
+}
+```
+
+### `GET /api/history?symbol=AAPL.US&from=2020-01-01&to=2026-05-12`
+
+指定期間の日足価格を返します。
+
 ## テストとビルド
 
 ```bash
 npm test
 npm run build
 ```
+
+GitHub Actions では以下を実行します。
+
+- `npm install`
+- `npm test`
+- `npm run build`
 
 ## GitHub Actions の修正内容
 
@@ -88,5 +131,6 @@ npm run build
 ## 注意
 
 - 実注文発注や証券会社 API 連携は含めていません。
+- 無料データソースはリアルタイム配信ではなく、遅延・終値ベースになる場合があります。
 - バックテスト結果は将来の運用成績を保証しません。
 - Stooq のデータは銘柄・市場によって遅延や欠損があり得ます。
