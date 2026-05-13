@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStooqHistoryUrl, normalizeStooqSymbol, parseStooqCsv } from "../src/server/stooq";
+import { buildStooqHistoryUrl, buildStooqQuoteUrl, normalizeStooqSymbol, parseStooqCsv, parseStooqQuoteCsv } from "../src/server/stooq";
 
 describe("Stooq helpers", () => {
   it("normalizes US symbols when the exchange suffix is omitted", () => {
@@ -17,6 +17,15 @@ describe("Stooq helpers", () => {
     expect(url).toContain("d2=20240131");
   });
 
+  it("builds a quote URL for multiple symbols", () => {
+    const url = buildStooqQuoteUrl(["AAPL.US", "MSFT"]);
+
+    expect(url).toContain("stooq.com/q/l/");
+    expect(url).toContain("s=aapl.us%2Cmsft.us");
+    expect(url).toContain("f=sd2t2ohlcv");
+    expect(url).toContain("e=csv");
+  });
+
   it("parses Stooq CSV prices", () => {
     const csv = `Date,Open,High,Low,Close,Volume\n2024-01-02,10,12,9,11,12345\n2024-01-03,11,13,10,12,23456`;
     const points = parseStooqCsv(csv);
@@ -32,7 +41,28 @@ describe("Stooq helpers", () => {
     });
   });
 
+  it("parses Stooq quote CSV", () => {
+    const csv = `Symbol,Date,Time,Open,High,Low,Close,Volume\nAAPL.US,2026-05-12,22:00:09,100,110,99,108,123456`;
+    const quotes = parseStooqQuoteCsv(csv);
+
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0]).toMatchObject({
+      symbol: "AAPL.US",
+      date: "2026-05-12",
+      time: "22:00:09",
+      open: 100,
+      high: 110,
+      low: 99,
+      close: 108,
+      previousClose: 100,
+      change: 8,
+      changePct: 0.08,
+      volume: 123456
+    });
+  });
+
   it("returns an empty array for no data responses", () => {
     expect(parseStooqCsv("No data")).toEqual([]);
+    expect(parseStooqQuoteCsv("No data")).toEqual([]);
   });
 });
