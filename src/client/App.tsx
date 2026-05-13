@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_AUTO_TRADE_CONFIG,
   runAutoTradingBacktest,
@@ -6,6 +6,7 @@ import {
   type BacktestPoint,
   type BacktestResult
 } from "../shared/autoTrader";
+import { calculatePortfolioReturns, type PortfolioPosition, type PortfolioReturnSummary, type QuotePoint } from "../shared/portfolio";
 import type { PricePoint } from "../shared/types";
 
 interface HistoryResponse {
@@ -14,6 +15,20 @@ interface HistoryResponse {
   to: string;
   prices: PricePoint[];
 }
+
+interface QuotesResponse {
+  quotes: QuotePoint[];
+  requestedSymbols: string[];
+  fetchedAt: string;
+}
+
+const PORTFOLIO_STORAGE_KEY = "stock-investment-simulator.positions.v1";
+
+const defaultPositions: PortfolioPosition[] = [
+  { id: "aapl", symbol: "AAPL.US", shares: 12, averageCost: 170 },
+  { id: "msft", symbol: "MSFT.US", shares: 8, averageCost: 360 },
+  { id: "spy", symbol: "SPY.US", shares: 5, averageCost: 485 }
+];
 
 const strategyCopy: Record<AutoTradeStrategy, { title: string; description: string }> = {
   "sma-crossover": {
@@ -30,6 +45,24 @@ const strategyCopy: Record<AutoTradeStrategy, { title: string; description: stri
   }
 };
 
+function loadStoredPositions(): PortfolioPosition[] {
+  try {
+    const raw = window.localStorage.getItem(PORTFOLIO_STORAGE_KEY);
+    if (!raw) {
+      return defaultPositions;
+    }
+
+    const parsed = JSON.parse(raw) as PortfolioPosition[];
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return defaultPositions;
+    }
+
+    return parsed;
+  } catch {
+    return defaultPositions;
+  }
+}
+
 function isoYearsAgo(years: number): string {
   const date = new Date();
   date.setFullYear(date.getFullYear() - years);
@@ -40,7 +73,7 @@ function currencyForSymbol(symbol: string): "USD" | "JPY" {
   return symbol.toUpperCase().endsWith(".JP") ? "JPY" : "USD";
 }
 
-function formatCurrency(value: number, symbol: string): string {
+function formatCurrency(value: number, symbol = "AAPL.US"): string {
   return new Intl.NumberFormat("ja-JP", {
     style: "currency",
     currency: currencyForSymbol(symbol),
@@ -69,6 +102,12 @@ function pickErrorMessage(payload: unknown): string {
   }
 
   return "Failed to fetch price data";
+}
+
+function toneClass(value: number): string {
+  if (value > 0) return "positive-text";
+  if (value < 0) return "negative-text";
+  return "";
 }
 
 function linePath(
@@ -136,7 +175,176 @@ function MetricCard({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
+function DailyMonitor({ positions, setPositions }: { positions: PortfolioPosition[]; setPositions: (positions: PortfolioPosition[]) => void }) {
+  const [quotes, setQuotes] = useState<QuotePoint[]>([]);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newSymbol, setNewSymbol] = useState("NVDA.US");
+  const [newShares, setNewShares] = useState(3);
+  const [newAverageCost, setNewAverageCost] = useState(900);
+
+  const summary: PortfolioReturnSummary | null = useMemo(() => {
+    if (quotes.length === 0 || positions.length === 0) {
+      return null;
+    }
+
+    try {
+      return calculatePortfolioReturns(positions, quotes, fetchedAt ?? new Date().toISOString());
+    } catch {
+      return null;
+    }
+  }, [positions, quotes, fetchedAt]);
+
+  async function refreshQuotes() {
+    if (positions.length === 0) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const symbols = [...new Set(positions.map((position) => position.symbol.trim()).filter(Boolean))];
+      const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`);
+      const payload = (await response.json()) as QuotesResponse | { error?: string };
+
+      if (!response.ok) {
+        throw new Error(pickErrorMessage(payload));
+      }
+
+      const data = payload as QuotesResponse;
+      setQuotes(data.quotes);
+      setFetchedAt(data.fetchedAt);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unexpected quote error");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    window.localStorage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify(positions));
+  }, [positions]);
+
+  useEffect(() => {
+    void refreshQuotes();
+  }, []);
+
+  useEffect(() => {
+    if (!autoRefresh) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshQuotes();
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, positions]);
+
+  function updatePosition(id: string, patch: Partial<PortfolioPosition>) {
+    setPositions(positions.map((position) => (position.id === id ? { ...position, ...patch } : position)));
+  }
+
+  function addPosition(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const position: PortfolioPosition = {
+      id: `${newSymbol}-${Date.now()}`,
+      symbol: newSymbol.trim().toUpperCase(),
+      shares: Number(newShares),
+      averageCost: Number(newAverageCost)
+    };
+
+    setPositions([...positions, position]);
+  }
+
+  function removePosition(id: string) {
+    setPositions(positions.filter((position) => position.id !== id));
+  }
+
+  return (
+    <section className="daily-card">
+      <div className="daily-header">
+        <div>
+          <p className="eyebrow">Daily return monitor</p>
+          <h2>今日の保有リターン</h2>
+          <p>登録した保有銘柄の最新価格を読み込み、前日比と累計損益を毎日確認できます。</p>
+        </div>
+        <div className="daily-actions">
+          <button type="button" onClick={() => void refreshQuotes()} disabled={isLoading}>{isLoading ? "更新中..." : "最新価格を取得"}</button>
+          <label className="toggle-row">
+            <input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} />
+            60秒ごとに更新
+          </label>
+        </div>
+      </div>
+
+      {error && <div className="inline-error">{error}</div>}
+
+      {summary && (
+        <div className="portfolio-summary">
+          <MetricCard label="評価額合計" value={formatCurrency(summary.totalMarketValue)} tone={summary.totalUnrealizedPnl >= 0 ? "good" : "bad"} />
+          <MetricCard label="投資元本" value={formatCurrency(summary.totalInvested)} />
+          <MetricCard label="評価損益" value={formatCurrency(summary.totalUnrealizedPnl)} tone={summary.totalUnrealizedPnl >= 0 ? "good" : "bad"} />
+          <MetricCard label="総リターン" value={formatPercent(summary.totalUnrealizedReturn)} tone={summary.totalUnrealizedReturn >= 0 ? "good" : "bad"} />
+          <MetricCard label="今日の損益" value={formatCurrency(summary.totalDayPnl)} tone={summary.totalDayPnl >= 0 ? "good" : "bad"} />
+          <MetricCard label="今日の変化率" value={formatPercent(summary.totalDayReturn)} tone={summary.totalDayReturn >= 0 ? "good" : "bad"} />
+        </div>
+      )}
+
+      <div className="positions-table-wrap">
+        <table className="positions-table">
+          <thead>
+            <tr>
+              <th>銘柄</th>
+              <th>株数</th>
+              <th>平均取得</th>
+              <th>最新価格</th>
+              <th>前日比</th>
+              <th>評価額</th>
+              <th>評価損益</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {positions.map((position) => {
+              const row = summary?.positions.find((item) => item.id === position.id);
+              return (
+                <tr key={position.id}>
+                  <td>
+                    <input value={position.symbol} onChange={(event) => updatePosition(position.id, { symbol: event.target.value.toUpperCase() })} />
+                    {row?.quote.date && <small>{row.quote.date} {row.quote.time}</small>}
+                  </td>
+                  <td><input type="number" min="0" value={position.shares} onChange={(event) => updatePosition(position.id, { shares: Number(event.target.value) })} /></td>
+                  <td><input type="number" min="0" value={position.averageCost} onChange={(event) => updatePosition(position.id, { averageCost: Number(event.target.value) })} /></td>
+                  <td>{row ? formatCurrency(row.quote.close, row.symbol) : "—"}</td>
+                  <td className={row ? toneClass(row.dayPnl) : ""}>{row ? `${formatCurrency(row.dayPnl, row.symbol)} / ${formatPercent(row.dayReturn)}` : "—"}</td>
+                  <td>{row ? formatCurrency(row.marketValue, row.symbol) : "—"}</td>
+                  <td className={row ? toneClass(row.unrealizedPnl) : ""}>{row ? `${formatCurrency(row.unrealizedPnl, row.symbol)} / ${formatPercent(row.unrealizedReturn)}` : "—"}</td>
+                  <td><button type="button" className="ghost-button" onClick={() => removePosition(position.id)}>削除</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <form className="add-position" onSubmit={addPosition}>
+        <input value={newSymbol} onChange={(event) => setNewSymbol(event.target.value.toUpperCase())} placeholder="NVDA.US" />
+        <input type="number" min="0" step="0.01" value={newShares} onChange={(event) => setNewShares(Number(event.target.value))} placeholder="株数" />
+        <input type="number" min="0" step="0.01" value={newAverageCost} onChange={(event) => setNewAverageCost(Number(event.target.value))} placeholder="平均取得単価" />
+        <button type="submit">銘柄を追加</button>
+      </form>
+
+      {fetchedAt && <p className="last-updated">Last updated: {new Date(fetchedAt).toLocaleString("ja-JP")}</p>}
+    </section>
+  );
+}
+
 export default function App() {
+  const [positions, setPositions] = useState<PortfolioPosition[]>(() => loadStoredPositions());
   const [symbol, setSymbol] = useState("AAPL.US");
   const [from, setFrom] = useState(isoYearsAgo(5));
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
@@ -229,21 +437,23 @@ export default function App() {
     <main>
       <section className="hero">
         <div>
-          <p className="eyebrow">Real data auto-trading backtester</p>
-          <h1>実株価で動く自動売買シミュレーター</h1>
+          <p className="eyebrow">Portfolio monitor + auto-trading backtester</p>
+          <h1>毎日のリターン確認と自動売買検証</h1>
           <p className="lead">
-            銘柄・期間・戦略・リスク管理を指定し、Stooq の日足終値で売買シグナル、約定、損益、ドローダウンを検証します。
+            保有銘柄の最新価格を読み込んで日次損益を確認し、同じ画面で自動売買戦略のバックテストもできます。
           </p>
         </div>
         <div className="disclaimer">
-          実注文は出しません。これはバックテスト / ペーパートレード用です。
+          実注文は出しません。無料データは遅延または終値ベースになる場合があります。
         </div>
       </section>
+
+      <DailyMonitor positions={positions} setPositions={setPositions} />
 
       <section className="layout">
         <form className="control-panel" onSubmit={handleSubmit}>
           <div className="panel-section">
-            <h2>Market data</h2>
+            <h2>Backtest market data</h2>
             <label>
               ティッカー
               <input value={symbol} onChange={(event) => setSymbol(event.target.value)} placeholder="AAPL.US" />
@@ -359,7 +569,7 @@ export default function App() {
 
           {!backtest && !error && (
             <div className="message empty">
-              <strong>まだバックテスト結果がありません。</strong>
+              <strong>バックテスト結果がありません。</strong>
               <span>左の条件を設定して、実株価データを取得してください。</span>
             </div>
           )}
