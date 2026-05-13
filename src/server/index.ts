@@ -1,5 +1,5 @@
 import express from "express";
-import { fetchStooqHistory, normalizeStooqSymbol } from "./stooq";
+import { fetchStooqHistory, fetchStooqQuotes, normalizeStooqSymbol } from "./stooq";
 import { isValidIsoDate, todayIso, yearsAgoIso } from "./validation";
 
 const app = express();
@@ -7,6 +7,18 @@ const port = Number(process.env.PORT ?? 3001);
 
 function readQuery(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readSymbols(value: unknown): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((symbol) => symbol.trim())
+    .filter(Boolean)
+    .slice(0, 25);
 }
 
 app.get("/api/health", (_request, response) => {
@@ -38,6 +50,29 @@ app.get("/api/history", async (request, response) => {
     }
 
     response.json({ symbol: normalizedSymbol.toUpperCase(), from, to, prices });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    response.status(502).json({ error: message });
+  }
+});
+
+app.get("/api/quotes", async (request, response) => {
+  try {
+    const symbols = readSymbols(request.query.symbols);
+
+    if (symbols.length === 0) {
+      response.status(400).json({ error: "symbols query is required, for example /api/quotes?symbols=AAPL.US,MSFT.US" });
+      return;
+    }
+
+    const quotes = await fetchStooqQuotes(symbols);
+
+    if (quotes.length === 0) {
+      response.status(404).json({ error: "No quote data found" });
+      return;
+    }
+
+    response.json({ quotes, requestedSymbols: symbols.map((symbol) => normalizeStooqSymbol(symbol).toUpperCase()), fetchedAt: new Date().toISOString() });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     response.status(502).json({ error: message });
