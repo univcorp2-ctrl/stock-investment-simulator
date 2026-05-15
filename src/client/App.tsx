@@ -20,9 +20,11 @@ interface QuotesResponse {
   quotes: QuotePoint[];
   requestedSymbols: string[];
   fetchedAt: string;
+  note?: string;
 }
 
 const PORTFOLIO_STORAGE_KEY = "stock-investment-simulator.positions.v1";
+const REFRESH_INTERVAL_MS = 60_000;
 
 const defaultPositions: PortfolioPosition[] = [
   { id: "aapl", symbol: "AAPL.US", shares: 12, averageCost: 170 },
@@ -178,12 +180,18 @@ function MetricCard({ label, value, tone }: { label: string; value: string; tone
 function DailyMonitor({ positions, setPositions }: { positions: PortfolioPosition[]; setPositions: (positions: PortfolioPosition[]) => void }) {
   const [quotes, setQuotes] = useState<QuotePoint[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [apiNote, setApiNote] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newSymbol, setNewSymbol] = useState("NVDA.US");
   const [newShares, setNewShares] = useState(3);
   const [newAverageCost, setNewAverageCost] = useState(900);
+
+  const positionKey = useMemo(
+    () => positions.map((position) => `${position.symbol}:${position.shares}:${position.averageCost}`).join("|"),
+    [positions]
+  );
 
   const summary: PortfolioReturnSummary | null = useMemo(() => {
     if (quotes.length === 0 || positions.length === 0) {
@@ -217,6 +225,7 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
       const data = payload as QuotesResponse;
       setQuotes(data.quotes);
       setFetchedAt(data.fetchedAt);
+      setApiNote(data.note ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unexpected quote error");
     } finally {
@@ -230,7 +239,7 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
 
   useEffect(() => {
     void refreshQuotes();
-  }, []);
+  }, [positionKey]);
 
   useEffect(() => {
     if (!autoRefresh) {
@@ -239,10 +248,10 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
 
     const intervalId = window.setInterval(() => {
       void refreshQuotes();
-    }, 60_000);
+    }, REFRESH_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [autoRefresh, positions]);
+  }, [autoRefresh, positionKey]);
 
   function updatePosition(id: string, patch: Partial<PortfolioPosition>) {
     setPositions(positions.map((position) => (position.id === id ? { ...position, ...patch } : position)));
@@ -268,15 +277,20 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
     <section className="daily-card">
       <div className="daily-header">
         <div>
-          <p className="eyebrow">Daily return monitor</p>
-          <h2>今日の保有リターン</h2>
-          <p>登録した保有銘柄の最新価格を読み込み、前日比と累計損益を毎日確認できます。</p>
+          <p className="eyebrow">Daily performance monitor</p>
+          <h2>毎日リアルタイムに近いパフォーマンス確認</h2>
+          <p>Web画面を開いておくだけで最新価格を定期取得し、前営業日の終値を基準に今日の損益を更新します。</p>
+          <div className="status-row">
+            <span className={`live-pill ${autoRefresh ? "on" : "off"}`}>{autoRefresh ? "LIVE POLLING ON" : "LIVE POLLING OFF"}</span>
+            <span>基準: 前営業日終値</span>
+            <span>更新間隔: 60秒</span>
+          </div>
         </div>
         <div className="daily-actions">
           <button type="button" onClick={() => void refreshQuotes()} disabled={isLoading}>{isLoading ? "更新中..." : "最新価格を取得"}</button>
           <label className="toggle-row">
             <input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} />
-            60秒ごとに更新
+            60秒ごとに自動更新
           </label>
         </div>
       </div>
@@ -302,9 +316,10 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
               <th>株数</th>
               <th>平均取得</th>
               <th>最新価格</th>
-              <th>前日比</th>
+              <th>前日終値</th>
+              <th>今日の損益</th>
               <th>評価額</th>
-              <th>評価損益</th>
+              <th>累計損益</th>
               <th></th>
             </tr>
           </thead>
@@ -315,11 +330,15 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
                 <tr key={position.id}>
                   <td>
                     <input value={position.symbol} onChange={(event) => updatePosition(position.id, { symbol: event.target.value.toUpperCase() })} />
-                    {row?.quote.date && <small>{row.quote.date} {row.quote.time}</small>}
+                    {row?.quote.date && <small>最新: {row.quote.date} {row.quote.time}</small>}
                   </td>
                   <td><input type="number" min="0" value={position.shares} onChange={(event) => updatePosition(position.id, { shares: Number(event.target.value) })} /></td>
                   <td><input type="number" min="0" value={position.averageCost} onChange={(event) => updatePosition(position.id, { averageCost: Number(event.target.value) })} /></td>
                   <td>{row ? formatCurrency(row.quote.close, row.symbol) : "—"}</td>
+                  <td>
+                    {row?.quote.previousClose ? formatCurrency(row.quote.previousClose, row.symbol) : "—"}
+                    {row?.quote.previousCloseDate && <small>基準日: {row.quote.previousCloseDate}</small>}
+                  </td>
                   <td className={row ? toneClass(row.dayPnl) : ""}>{row ? `${formatCurrency(row.dayPnl, row.symbol)} / ${formatPercent(row.dayReturn)}` : "—"}</td>
                   <td>{row ? formatCurrency(row.marketValue, row.symbol) : "—"}</td>
                   <td className={row ? toneClass(row.unrealizedPnl) : ""}>{row ? `${formatCurrency(row.unrealizedPnl, row.symbol)} / ${formatPercent(row.unrealizedReturn)}` : "—"}</td>
@@ -339,6 +358,7 @@ function DailyMonitor({ positions, setPositions }: { positions: PortfolioPositio
       </form>
 
       {fetchedAt && <p className="last-updated">Last updated: {new Date(fetchedAt).toLocaleString("ja-JP")}</p>}
+      {apiNote && <p className="api-note">{apiNote}</p>}
     </section>
   );
 }
@@ -437,10 +457,10 @@ export default function App() {
     <main>
       <section className="hero">
         <div>
-          <p className="eyebrow">Portfolio monitor + auto-trading backtester</p>
-          <h1>毎日のリターン確認と自動売買検証</h1>
+          <p className="eyebrow">Live daily performance + auto-trading backtester</p>
+          <h1>Webで毎日の投資パフォーマンスを確認</h1>
           <p className="lead">
-            保有銘柄の最新価格を読み込んで日次損益を確認し、同じ画面で自動売買戦略のバックテストもできます。
+            保有銘柄の最新価格を定期取得し、前営業日の終値を基準に日次リターンを表示します。下部では同じ銘柄で自動売買戦略も検証できます。
           </p>
         </div>
         <div className="disclaimer">
