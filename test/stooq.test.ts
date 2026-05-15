@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildStooqHistoryUrl, buildStooqQuoteUrl, normalizeStooqSymbol, parseStooqCsv, parseStooqQuoteCsv } from "../src/server/stooq";
+import {
+  buildStooqHistoryUrl,
+  buildStooqQuoteUrl,
+  enrichQuoteWithPreviousClose,
+  normalizeStooqSymbol,
+  parseStooqCsv,
+  parseStooqQuoteCsv
+} from "../src/server/stooq";
 
 describe("Stooq helpers", () => {
   it("normalizes US symbols when the exchange suffix is omitted", () => {
@@ -41,12 +48,12 @@ describe("Stooq helpers", () => {
     });
   });
 
-  it("parses Stooq quote CSV", () => {
+  it("parses raw Stooq quote CSV without pretending open is previous close", () => {
     const csv = `Symbol,Date,Time,Open,High,Low,Close,Volume\nAAPL.US,2026-05-12,22:00:09,100,110,99,108,123456`;
     const quotes = parseStooqQuoteCsv(csv);
 
     expect(quotes).toHaveLength(1);
-    expect(quotes[0]).toMatchObject({
+    expect(quotes[0]).toEqual({
       symbol: "AAPL.US",
       date: "2026-05-12",
       time: "22:00:09",
@@ -54,11 +61,48 @@ describe("Stooq helpers", () => {
       high: 110,
       low: 99,
       close: 108,
-      previousClose: 100,
-      change: 8,
-      changePct: 0.08,
       volume: 123456
     });
+  });
+
+  it("enriches latest quotes with previous trading close from daily history", () => {
+    const quote = {
+      symbol: "AAPL.US",
+      date: "2026-05-12",
+      time: "22:00:09",
+      open: 100,
+      high: 110,
+      low: 99,
+      close: 108,
+      volume: 123456
+    };
+    const enriched = enrichQuoteWithPreviousClose(quote, [
+      { date: "2026-05-08", close: 95 },
+      { date: "2026-05-11", close: 101 },
+      { date: "2026-05-12", close: 108 }
+    ]);
+
+    expect(enriched.previousClose).toBe(101);
+    expect(enriched.previousCloseDate).toBe("2026-05-11");
+    expect(enriched.change).toBe(7);
+    expect(enriched.changePct).toBeCloseTo(7 / 101);
+  });
+
+  it("uses the latest daily close as the previous close when the quote date is newer than history", () => {
+    const quote = {
+      symbol: "AAPL.US",
+      date: "2026-05-13",
+      time: "15:00:00",
+      close: 111
+    };
+    const enriched = enrichQuoteWithPreviousClose(quote, [
+      { date: "2026-05-11", close: 101 },
+      { date: "2026-05-12", close: 108 }
+    ]);
+
+    expect(enriched.previousClose).toBe(108);
+    expect(enriched.previousCloseDate).toBe("2026-05-12");
+    expect(enriched.change).toBe(3);
   });
 
   it("returns an empty array for no data responses", () => {
