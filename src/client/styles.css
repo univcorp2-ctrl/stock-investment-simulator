@@ -99,10 +99,36 @@ h2 {
 }
 
 .daily-header p:not(.eyebrow) {
-  max-width: 740px;
+  max-width: 780px;
   margin: 12px 0 0;
   color: #64748b;
   line-height: 1.55;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-row span {
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #475569;
+  padding: 7px 10px;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.live-pill.on {
+  background: #dcfce7;
+  color: #047857;
+}
+
+.live-pill.off {
+  background: #fee2e2;
+  color: #be123c;
 }
 
 .daily-actions {
@@ -142,7 +168,7 @@ h2 {
 }
 
 .positions-table {
-  min-width: 1040px;
+  min-width: 1180px;
   margin-bottom: 14px;
 }
 
@@ -166,11 +192,16 @@ h2 {
   padding-top: 14px;
 }
 
-.last-updated {
+.last-updated,
+.api-note {
   margin: 12px 0 0;
   color: #64748b;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.api-note {
+  margin-top: 6px;
 }
 
 .inline-error {
