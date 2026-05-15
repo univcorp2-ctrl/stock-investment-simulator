@@ -1,7 +1,16 @@
-import type { PricePoint } from "../shared/types";
 import type { QuotePoint } from "../shared/portfolio";
+import type { PricePoint } from "../shared/types";
 
 const SYMBOL_PATTERN = /^[a-zA-Z0-9.^_-]{1,32}$/;
+const RECENT_HISTORY_LOOKBACK_DAYS = 21;
+const QUOTE_CACHE_MS = 30_000;
+
+interface CachedQuote {
+  expiresAt: number;
+  quote: QuotePoint;
+}
+
+const quoteCache = new Map<string, CachedQuote>();
 
 export function normalizeStooqSymbol(rawSymbol: string): string {
   const trimmed = rawSymbol.trim();
@@ -12,6 +21,16 @@ export function normalizeStooqSymbol(rawSymbol: string): string {
 
   const normalized = trimmed.toLowerCase();
   return normalized.includes(".") ? normalized : `${normalized}.us`;
+}
+
+function isoDaysAgo(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export function buildStooqHistoryUrl(symbol: string, from: string, to: string): string {
@@ -66,6 +85,12 @@ function splitCsvLine(line: string): string[] {
 
   columns.push(current.trim());
   return columns;
+}
+
+function validSortedHistory(history: PricePoint[]): PricePoint[] {
+  return [...history]
+    .filter((point) => Boolean(point.date) && Number.isFinite(point.close) && point.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function parseStooqCsv(csv: string): PricePoint[] {
@@ -125,34 +150,65 @@ export function parseStooqQuoteCsv(csv: string): QuotePoint[] {
 
   return dataLines
     .map(splitCsvLine)
-    .map((columns) => {
-      const close = parseNumber(columns[closeIndex]);
-      const open = parseNumber(columns[openIndex]);
-      const previousClose = open;
-      const change = close !== undefined && previousClose !== undefined ? close - previousClose : undefined;
-      const changePct = change !== undefined && previousClose !== undefined && previousClose !== 0 ? change / previousClose : undefined;
-
-      return {
-        symbol: columns[symbolIndex].toUpperCase(),
-        date: columns[dateIndex],
-        time: columns[timeIndex],
-        open,
-        high: parseNumber(columns[highIndex]),
-        low: parseNumber(columns[lowIndex]),
-        close,
-        previousClose,
-        change,
-        changePct,
-        volume: parseNumber(columns[volumeIndex])
-      };
-    })
+    .map((columns) => ({
+      symbol: columns[symbolIndex].toUpperCase(),
+      date: columns[dateIndex],
+      time: columns[timeIndex],
+      open: parseNumber(columns[openIndex]),
+      high: parseNumber(columns[highIndex]),
+      low: parseNumber(columns[lowIndex]),
+      close: parseNumber(columns[closeIndex]),
+      volume: parseNumber(columns[volumeIndex])
+    }))
     .filter((quote): quote is QuotePoint => Boolean(quote.symbol) && Boolean(quote.date) && typeof quote.close === "number" && quote.close > 0);
 }
 
-export async function fetchStooqHistory(symbol: string, from: string, to: string): Promise<PricePoint[]> {
-  const response = await fetch(buildStooqHistoryUrl(symbol, from, to), {
+export function enrichQuoteWithPreviousClose(quote: QuotePoint, historyInput: PricePoint[]): QuotePoint {
+  const history = validSortedHistory(historyInput);
+
+  if (history.length === 0) {
+    return quote;
+  }
+
+  let latestTradingPoint = history[history.length - 1];
+  let previousTradingPoint: PricePoint | undefined;
+  const sameDateIndex = history.findIndex((point) => point.date === quote.date);
+
+  if (sameDateIndex >= 0) {
+    latestTradingPoint = history[sameDateIndex];
+    previousTradingPoint = sameDateIndex > 0 ? history[sameDateIndex - 1] : undefined;
+  } else {
+    const beforeQuoteDate = history.filter((point) => point.date < quote.date);
+    previousTradingPoint = beforeQuoteDate[beforeQuoteDate.length - 1] ?? history[history.length - 2];
+  }
+
+  if (!previousTradingPoint && history.length >= 2) {
+    previousTradingPoint = history[history.length - 2];
+  }
+
+  if (!previousTradingPoint) {
+    return {
+      ...quote,
+      latestTradingDate: latestTradingPoint.date
+    };
+  }
+
+  const change = quote.close - previousTradingPoint.close;
+
+  return {
+    ...quote,
+    latestTradingDate: latestTradingPoint.date,
+    previousClose: previousTradingPoint.close,
+    previousCloseDate: previousTradingPoint.date,
+    change,
+    changePct: previousTradingPoint.close === 0 ? undefined : change / previousTradingPoint.close
+  };
+}
+
+async function fetchText(url: string): Promise<string> {
+  const response = await fetch(url, {
     headers: {
-      "User-Agent": "stock-investment-simulator/0.3"
+      "User-Agent": "stock-investment-simulator/0.4"
     }
   });
 
@@ -160,23 +216,58 @@ export async function fetchStooqHistory(symbol: string, from: string, to: string
     throw new Error(`Stooq request failed with status ${response.status}`);
   }
 
-  return parseStooqCsv(await response.text());
+  return response.text();
 }
 
-export async function fetchStooqQuotes(symbols: string[]): Promise<QuotePoint[]> {
+export async function fetchStooqHistory(symbol: string, from: string, to: string): Promise<PricePoint[]> {
+  return parseStooqCsv(await fetchText(buildStooqHistoryUrl(symbol, from, to)));
+}
+
+async function fetchRawStooqQuotes(symbols: string[]): Promise<QuotePoint[]> {
   if (symbols.length === 0) {
     return [];
   }
 
-  const response = await fetch(buildStooqQuoteUrl(symbols), {
-    headers: {
-      "User-Agent": "stock-investment-simulator/0.3"
-    }
-  });
+  return parseStooqQuoteCsv(await fetchText(buildStooqQuoteUrl(symbols)));
+}
 
-  if (!response.ok) {
-    throw new Error(`Stooq quote request failed with status ${response.status}`);
+async function fetchRecentHistory(symbol: string): Promise<PricePoint[]> {
+  return fetchStooqHistory(symbol, isoDaysAgo(RECENT_HISTORY_LOOKBACK_DAYS), todayIso());
+}
+
+async function fetchQuoteWithPreviousClose(symbol: string): Promise<QuotePoint | null> {
+  const normalizedSymbol = normalizeStooqSymbol(symbol).toUpperCase();
+  const cached = quoteCache.get(normalizedSymbol);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.quote;
   }
 
-  return parseStooqQuoteCsv(await response.text());
+  const [rawQuote] = await fetchRawStooqQuotes([normalizedSymbol]);
+
+  if (!rawQuote) {
+    return null;
+  }
+
+  let enrichedQuote = rawQuote;
+
+  try {
+    const recentHistory = await fetchRecentHistory(normalizedSymbol);
+    enrichedQuote = enrichQuoteWithPreviousClose(rawQuote, recentHistory);
+  } catch {
+    enrichedQuote = rawQuote;
+  }
+
+  quoteCache.set(normalizedSymbol, {
+    expiresAt: Date.now() + QUOTE_CACHE_MS,
+    quote: enrichedQuote
+  });
+
+  return enrichedQuote;
+}
+
+export async function fetchStooqQuotes(symbols: string[]): Promise<QuotePoint[]> {
+  const normalizedSymbols = [...new Set(symbols.map((symbol) => normalizeStooqSymbol(symbol).toUpperCase()))];
+  const quotes = await Promise.all(normalizedSymbols.map((symbol) => fetchQuoteWithPreviousClose(symbol)));
+  return quotes.filter((quote): quote is QuotePoint => quote !== null);
 }
