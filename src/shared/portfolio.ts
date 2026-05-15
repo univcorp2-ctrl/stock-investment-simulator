@@ -3,7 +3,9 @@ import type { PricePoint } from "./types";
 export interface QuotePoint extends PricePoint {
   symbol: string;
   time?: string;
+  latestTradingDate?: string;
   previousClose?: number;
+  previousCloseDate?: string;
   change?: number;
   changePct?: number;
 }
@@ -73,8 +75,9 @@ export function calculatePortfolioReturns(
     const invested = position.shares * position.averageCost;
     const unrealizedPnl = marketValue - invested;
     const unrealizedReturn = invested === 0 ? 0 : unrealizedPnl / invested;
-    const dayPnl = typeof quote.change === "number" ? position.shares * quote.change : 0;
-    const dayReturn = typeof quote.changePct === "number" ? quote.changePct : 0;
+    const previousClose = quote.previousClose ?? quote.close - (quote.change ?? 0);
+    const dayPnl = position.shares * (quote.close - previousClose);
+    const dayReturn = previousClose === 0 ? 0 : (quote.close - previousClose) / previousClose;
 
     return {
       id: position.id,
