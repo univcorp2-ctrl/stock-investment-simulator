@@ -72,7 +72,13 @@ app.get("/api/quotes", async (request, response) => {
       return;
     }
 
-    response.json({ quotes, requestedSymbols: symbols.map((symbol) => normalizeStooqSymbol(symbol).toUpperCase()), fetchedAt: new Date().toISOString() });
+    response.set("Cache-Control", "no-store");
+    response.json({
+      quotes,
+      requestedSymbols: symbols.map((symbol) => normalizeStooqSymbol(symbol).toUpperCase()),
+      fetchedAt: new Date().toISOString(),
+      note: "Daily change is calculated against the previous trading close from recent daily history, not against the session open."
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     response.status(502).json({ error: message });
