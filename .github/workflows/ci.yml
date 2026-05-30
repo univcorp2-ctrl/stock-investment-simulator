@@ -4,28 +4,31 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  test-and-build:
+  test-build-and-excel:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      # This repository intentionally does not commit a lockfile yet.
-      # npm ci and setup-node's npm cache both require package-lock.json,
-      # so npm install is used until a lockfile is generated and committed.
       - name: Install dependencies
         run: npm install
-
-      - name: Run tests
+      - name: Type check
+        run: npm run lint
+      - name: Test
         run: npm test
-
-      - name: Build
+      - name: Build and generate Excel research workbook
         run: npm run build
+      - name: Upload research workbook artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: investing-api-research-workbook
+          path: |
+            dist/research/investing_api_research.xlsx
+            dist/research/*.csv
+          if-no-files-found: error
