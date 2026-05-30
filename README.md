@@ -1,147 +1,121 @@
-# Stock Investment Simulator
+# Investment API & Auto Trading Cockpit
 
-実株価を使って、自動売買ロジックのバックテスト、保有銘柄の毎日リターン確認、長期投資シミュレーションを行う Web アプリです。
+株価、暗号資産、FX、決算書、ニュース、マクロ、証券会社APIを横断的に調査し、AIが読みやすい形式で管理するWebアプリです。既存の投資シミュレーターを、API調査DB・Excel自動生成・戦略ビルダー・発注プレビュー・安全ゲート付き自動売買基盤へ上書き実装しました。
 
-> このアプリは教育・検証目的のシミュレーターです。証券会社への実注文発注機能は入れていません。投資助言ではありません。
+> 投資助言ではありません。実注文は `LIVE_TRADING_ENABLED=true` とブローカー別Secretsが設定されるまでサーバー側で遮断されます。まずPaper tradingと少額検証を行ってください。
 
-## 主な機能
+## 実装済み
 
-### Daily Performance Monitor
+- API/データプロバイダー調査DB: Alpha Vantage、Finnhub、FMP、Massive/Polygon、Twelve Data、Tiingo、EODHD、SEC EDGAR、J-Quants、EDINET、TDnet、FRED、World Bank、OECD、CoinGecko、CoinMarketCap、CCXT、News API、GDELT、Benzingaなど
+- 自動売買対応ブローカー/取引所DB: IBKR、Alpaca、TradeStation、Schwab、Tradier、tastytrade、OANDA、IG、kabuステーション、立花証券e支店、楽天RSS、SBIネオトレードExcel、moomoo、GMOコインFX、Binance、Bybit、OKX、Krakenなど
+- トレーリングストップ対応分類: native / partial / emulated / unknown
+- AI戦略プロファイル: リスク許容度、対象資産、時間軸、データ予算、自動化段階から戦略・API・ブローカー候補を推奨
+- 発注プレビュー: Alpaca、IBKR、TradeStation、Binance、Bybit、OKX、Kraken、OANDAなどのpayloadを生成
+- Excel生成: `dist/research/investing_api_research.xlsx` とCSVをGitHub Actions artifactとして出力
+- CI: type check、test、build、Excel artifact upload
+- GitHub Pagesデプロイ workflow
+- Devcontainer / Codespaces対応
 
-Web画面上で、保有銘柄のパフォーマンスを毎日チェックできます。
-
-- 保有銘柄を登録
-  - ティッカー
-  - 株数
-  - 平均取得単価
-- 最新価格を読み込み
-- **前営業日の終値** と比較して日次損益を計算
-- 前日比、前日比率、評価額、評価損益、総リターンを表示
-- ポートフォリオ合計の評価額、投資元本、損益、総リターンを表示
-- ブラウザの LocalStorage に保有銘柄を保存
-- 60秒ごとの自動更新をデフォルトON
-- 「最終更新時刻」「前日終値日付」「最新価格日付」を画面に表示
-
-無料データソースの制約上、秒単位の完全リアルタイム配信ではなく、遅延・終値ベースになる場合があります。ただし、画面は開いている限り定期的に最新値を取りに行き、前営業日の終値を基準に日次パフォーマンスを更新します。
-
-### 自動売買バックテスト
-
-- Stooq の日足 CSV から実際の過去株価を取得
-- 自動売買ロジック
-  - SMA ゴールデンクロス / デッドクロス
-  - RSI 逆張り
-  - ブレイクアウト
-- リスク管理
-  - 損切り
-  - 利確
-  - トレーリングストップ
-  - 手数料・スリッページ
-  - 投資比率
-- 結果分析
-  - 最終評価額
-  - 自動売買リターン
-  - Buy & Hold 比較
-  - 最大ドローダウン
-  - 勝率
-  - 取引回数
-  - エクスポージャー
-  - 損益付きトレードログ
-
-## 技術構成
-
-- フロントエンド: React + Vite + TypeScript
-- API: Express + TypeScript
-- テスト: Vitest
-- データ: Stooq CSV
-- CI: GitHub Actions
-
-## セットアップ
+## ローカル起動
 
 ```bash
 npm install
 npm run dev
 ```
 
-起動後、Vite の URL をブラウザで開いてください。
-
+- Web: Viteの表示URL
 - API: `http://localhost:3001`
-- フロント: Vite dev server
-- フロントから `/api` へのアクセスは Vite proxy で API に転送されます。
+- Research JSON: `http://localhost:3001/api/research`
 
-## ティッカー例
+## Excel調査レポート生成
 
-Stooq 形式を推奨します。
+```bash
+npm run excel:research
+```
 
-- `AAPL.US`
-- `MSFT.US`
-- `SPY.US`
-- `7203.JP`
+生成物:
 
-`.US` などの市場サフィックスを省略した場合は、自動で `.US` を補います。
+- `dist/research/investing_api_research.xlsx`
+- `dist/research/API Providers.csv`
+- `dist/research/Broker APIs.csv`
+- `dist/research/Strategies.csv`
+- `dist/research/Secrets.csv`
+
+GitHub Actionsでは `investing-api-research-workbook` artifact として取得できます。
 
 ## API
 
-### `GET /api/quotes?symbols=AAPL.US,MSFT.US,SPY.US`
+### `GET /api/research`
 
-複数銘柄の最新価格と前営業日終値を返します。
+APIプロバイダー、ブローカー、戦略テンプレートを返します。
+
+### `POST /api/strategy/recommend`
 
 ```json
 {
-  "quotes": [
-    {
-      "symbol": "AAPL.US",
-      "date": "2026-05-12",
-      "time": "22:00:09",
-      "open": 210,
-      "high": 214,
-      "low": 208.5,
-      "close": 212.3,
-      "latestTradingDate": "2026-05-12",
-      "previousClose": 209.7,
-      "previousCloseDate": "2026-05-11",
-      "change": 2.6,
-      "changePct": 0.0124,
-      "volume": 48200123
-    }
-  ],
-  "fetchedAt": "2026-05-12T22:01:00.000Z"
+  "riskTolerance": "medium",
+  "horizon": "swing",
+  "assetClass": "equity",
+  "dataBudget": "low-cost",
+  "automationLevel": "paper",
+  "prefersFundamental": true,
+  "prefersTechnical": true,
+  "prefersNews": true
 }
 ```
 
-前日比は `open` ではなく、直近日足データから取得した **前営業日の終値** を基準に計算します。
+### `POST /api/trading/order-preview`
 
-### `GET /api/history?symbol=AAPL.US&from=2020-01-01&to=2026-05-12`
+```json
+{
+  "brokerId": "alpaca",
+  "symbol": "AAPL",
+  "assetClass": "equity",
+  "side": "sell",
+  "quantity": 10,
+  "orderStyle": "trailing_stop",
+  "trailPercent": 3,
+  "timeInForce": "gtc",
+  "live": false
+}
+```
 
-指定期間の日足価格を返します。
+### `POST /api/trading/live-order`
 
-## テストとビルド
+本番発注用の入口ですが、現時点では以下の安全設計です。
+
+- `LIVE_TRADING_ENABLED=true` がない場合は403で停止
+- ブローカーSecretsが未設定なら送信不可
+- 現状はpayload生成とリスク検証まで。実ネットワーク送信adapterは、ユーザーが後から提供する口座/API情報に合わせて個別に有効化します
+
+## 必要Secrets
+
+実値は絶対にリポジトリへ保存しません。
+
+| Secret | 用途 |
+|---|---|
+| `LIVE_TRADING_ENABLED` | 本番発注ゲート解除。既定はfalse/未設定 |
+| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | Alpaca paper/live routing |
+| `IBKR_GATEWAY_HOST` / `IBKR_GATEWAY_PORT` | IBKR Gateway/TWS |
+| `BINANCE_API_KEY` / `BINANCE_API_SECRET` | Binance signed orders |
+| `JQUANTS_API_KEY` | J-Quantsデータ取得 |
+| `FMP_API_KEY` / `FINNHUB_API_KEY` / `ALPHAVANTAGE_API_KEY` | 有料/無料データ取得 |
+
+## 本番URL
+
+GitHub Pages workflowを追加済みです。初回のPagesデプロイが成功すると、通常は次のURLで静的UIを確認できます。
+
+`https://univcorp2-ctrl.github.io/stock-investment-simulator/`
+
+APIサーバーと実注文adapterを本番で動かすには、別途Render/Fly.io/Railway/AWS/VPS等へExpress APIをデプロイし、Secretsを設定してください。GitHub Pagesは静的ホスティングのため、実注文APIの常駐実行には使いません。
+
+## テスト
 
 ```bash
 npm test
 npm run build
 ```
 
-GitHub Actions では以下を実行します。
+## アーキテクチャ
 
-- `npm install`
-- `npm test`
-- `npm run build`
-
-## GitHub Actions の修正内容
-
-初回版では `.github/workflows/ci.yml` で `actions/setup-node` の `cache: npm` と `npm ci` を使っていました。
-
-しかし repo に `package-lock.json` が無かったため、GitHub Actions は次の理由で失敗していました。
-
-- `setup-node` の npm cache は lockfile を探す
-- `npm ci` は lockfile が必須
-- repo に `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` が存在しなかった
-
-そのため、現時点では CI を `npm install` ベースに修正しています。将来的に lockfile を commit する場合は、`npm ci` と npm cache に戻せます。
-
-## 注意
-
-- 実注文発注や証券会社 API 連携は含めていません。
-- 無料データソースはリアルタイム配信ではなく、遅延・終値ベースになる場合があります。
-- バックテスト結果は将来の運用成績を保証しません。
-- Stooq のデータは銘柄・市場によって遅延や欠損があり得ます。
+詳細は [`docs/architecture.md`](docs/architecture.md) を参照してください。
