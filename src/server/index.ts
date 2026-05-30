@@ -1,90 +1,54 @@
 import express from "express";
-import { fetchStooqHistory, fetchStooqQuotes, normalizeStooqSymbol } from "./stooq";
-import { isValidIsoDate, todayIso, yearsAgoIso } from "./validation";
+import { brokerApis, marketDataProviders, researchMetadata, strategyLibrary } from "../shared/research";
+import { DEFAULT_STRATEGY_PROFILE, recommendStrategy, type StrategyProfile } from "../shared/strategyAdvisor";
+import { buildOrderPreview, type OrderIntent } from "../shared/execution";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
 
-function readQuery(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function readSymbols(value: unknown): string[] {
-  if (typeof value !== "string") {
-    return [];
-  }
-
-  return value
-    .split(",")
-    .map((symbol) => symbol.trim())
-    .filter(Boolean)
-    .slice(0, 25);
-}
+app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true });
+  response.json({ ok: true, app: "investment-api-auto-trading-cockpit", version: "1.0.0" });
 });
 
-app.get("/api/history", async (request, response) => {
-  try {
-    const symbol = readQuery(request.query.symbol) ?? "AAPL.US";
-    const from = readQuery(request.query.from) ?? yearsAgoIso(5);
-    const to = readQuery(request.query.to) ?? todayIso();
+app.get("/api/research", (_request, response) => {
+  response.json({ metadata: researchMetadata, marketDataProviders, brokerApis, strategyLibrary });
+});
 
-    if (!isValidIsoDate(from) || !isValidIsoDate(to)) {
-      response.status(400).json({ error: "from and to must be ISO dates like 2020-01-01" });
-      return;
-    }
+app.post("/api/strategy/recommend", (request, response) => {
+  const profile = { ...DEFAULT_STRATEGY_PROFILE, ...(request.body ?? {}) } as StrategyProfile;
+  response.json(recommendStrategy(profile));
+});
 
-    if (from > to) {
-      response.status(400).json({ error: "from must be earlier than or equal to to" });
-      return;
-    }
+app.post("/api/trading/order-preview", (request, response) => {
+  const intent = request.body as OrderIntent;
+  response.json(buildOrderPreview(intent));
+});
 
-    const normalizedSymbol = normalizeStooqSymbol(symbol);
-    const prices = await fetchStooqHistory(normalizedSymbol, from, to);
-
-    if (prices.length === 0) {
-      response.status(404).json({ error: `No price data found for ${normalizedSymbol}` });
-      return;
-    }
-
-    response.json({ symbol: normalizedSymbol.toUpperCase(), from, to, prices });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    response.status(502).json({ error: message });
+app.post("/api/trading/live-order", (request, response) => {
+  const intent = request.body as OrderIntent;
+  const preview = buildOrderPreview({ ...intent, live: true });
+  if (!preview.valid) {
+    response.status(400).json(preview);
+    return;
   }
-});
-
-app.get("/api/quotes", async (request, response) => {
-  try {
-    const symbols = readSymbols(request.query.symbols);
-
-    if (symbols.length === 0) {
-      response.status(400).json({ error: "symbols query is required, for example /api/quotes?symbols=AAPL.US,MSFT.US" });
-      return;
-    }
-
-    const quotes = await fetchStooqQuotes(symbols);
-
-    if (quotes.length === 0) {
-      response.status(404).json({ error: "No quote data found" });
-      return;
-    }
-
-    response.set("Cache-Control", "no-store");
-    response.json({
-      quotes,
-      requestedSymbols: symbols.map((symbol) => normalizeStooqSymbol(symbol).toUpperCase()),
-      fetchedAt: new Date().toISOString(),
-      note: "Daily change is calculated against the previous trading close from recent daily history, not against the session open."
+  if (process.env.LIVE_TRADING_ENABLED !== "true") {
+    response.status(403).json({
+      ok: false,
+      blocked: true,
+      reason: "LIVE_TRADING_ENABLED is not true. This endpoint is intentionally blocked until broker secrets and production risk limits are configured.",
+      preview
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    response.status(502).json({ error: message });
+    return;
   }
+  response.status(501).json({
+    ok: false,
+    reason: "Live network submission adapters must be enabled per broker after credentials are supplied. Payload generation and risk validation are ready.",
+    preview
+  });
 });
 
 app.listen(port, () => {
-  console.log(`API server listening on http://localhost:${port}`);
+  console.log(`Investment cockpit API listening on http://localhost:${port}`);
 });
