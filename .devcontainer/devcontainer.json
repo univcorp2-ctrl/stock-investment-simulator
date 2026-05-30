@@ -1,0 +1,16 @@
+{
+  "name": "investment-api-auto-trading-cockpit",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  },
+  "postCreateCommand": "npm install",
+  "forwardPorts": [3001, 5173],
+  "portsAttributes": {
+    "3001": { "label": "Express API" },
+    "5173": { "label": "Vite Web" }
+  }
+}
