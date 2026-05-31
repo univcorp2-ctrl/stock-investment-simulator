@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stock-investment-simulator-api
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: LIVE_TRADING_ENABLED
+        value: false
