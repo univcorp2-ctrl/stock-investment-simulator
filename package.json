@@ -10,7 +10,6 @@
     "excel:research": "tsx scripts/generate-research-workbook.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
     "build": "npm run excel:research && tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
@@ -20,6 +19,7 @@
     "express": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "tsx": "latest",
     "xlsx": "latest"
   },
   "devDependencies": {
@@ -27,7 +27,6 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "tsx": "latest",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
