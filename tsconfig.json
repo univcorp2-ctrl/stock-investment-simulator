@@ -1,1 +1,35 @@
-{"compilerOptions":{"target":"ES2022","useDefineForClassFields":true,"lib":["DOM","DOM.Iterable","ES2022"],"allowJs":false,"skipLibCheck":true,"esModuleInterop":true,"allowSyntheticDefaultImports":true,"strict":true,"forceConsistentCasingInFileNames":true,"module":"ESNext","moduleResolution":"Bundler","resolveJsonModule":true,"isolatedModules":true,"noEmit":true,"jsx":"react-jsx","types":["vitest/globals","node","vite/client"]},"include":["src/client/**/*.ts","src/client/**/*.tsx","src/client/**/*.d.ts","src/shared/**/*.ts","src/server/index.ts","scripts/**/*.ts","test/**/*.ts","vite.config.ts","vitest.config.ts"],"exclude":["src/server/stooq.ts","node_modules","dist"]}
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["vitest/globals", "node", "vite/client"]
+  },
+  "files": [
+    "src/client/vite-env.d.ts",
+    "src/client/main.tsx",
+    "src/client/App.tsx",
+    "src/shared/research.ts",
+    "src/shared/strategyAdvisor.ts",
+    "src/shared/execution.ts",
+    "src/server/index.ts",
+    "scripts/generate-research-workbook.ts",
+    "test/strategyAdvisor.test.ts",
+    "test/execution.test.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["src/server/stooq.ts", "src/server/validation.ts", "src/shared/autoTrader.ts", "src/shared/portfolio.ts", "src/shared/types.ts", "node_modules", "dist"]
+}
