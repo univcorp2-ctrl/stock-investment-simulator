@@ -5,4 +5,4 @@ RUN npm install --omit=dev
 COPY . .
 ENV NODE_ENV=production PORT=3001
 EXPOSE 3001
-CMD ["node","--import","tsx","src/server/index.ts"]
+CMD ["npm","start"]
