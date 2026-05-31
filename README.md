@@ -30,6 +30,8 @@ npm run excel:research
 
 生成物: `dist/research/investing_api_research.xlsx`
 
+CIでは `investing-api-research-workbook` artifact としてExcel/CSVをアップロードします。
+
 ## API
 
 - `GET /api/health`
