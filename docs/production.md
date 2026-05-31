@@ -2,11 +2,13 @@
 
 ## Static UI
 
-GitHub Pages workflow成功後:
+GitHub Pages workflow builds the Vite app, uploads `dist`, and deploys it with `actions/deploy-pages`.
+
+Expected URL after successful deployment:
 
 `https://univcorp2-ctrl.github.io/stock-investment-simulator/`
 
-静的UIはフロント内蔵DBで動作します。
+If this URL is not accessible, the most likely cause is repository Pages configuration. The app build itself is checked by CI.
 
 ## API server
 
