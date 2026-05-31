@@ -1,19 +1,8 @@
-FROM node:24-slim AS deps
+FROM node:24-slim
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-
-FROM deps AS build
-COPY . .
-RUN npm run build
-
-FROM node:24-slim AS runtime
-WORKDIR /app
-ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --omit=dev
-COPY --from=build /app/src ./src
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/tsconfig.json ./tsconfig.json
+COPY . .
+ENV NODE_ENV=production PORT=3001
 EXPOSE 3001
-CMD ["node", "--import", "tsx", "src/server/index.ts"]
+CMD ["node","--import","tsx","src/server/index.ts"]
