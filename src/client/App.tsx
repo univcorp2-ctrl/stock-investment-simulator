@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { brokerApis, marketDataProviders, researchMetadata, strategyLibrary, type BrokerApi, type DataProvider, type StrategyMethod } from "../shared/research";
 import { DEFAULT_STRATEGY_PROFILE, recommendStrategy, type StrategyProfile } from "../shared/strategyAdvisor";
@@ -13,7 +14,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "orders", label: "発注プレビュー" }
 ];
 
-function Badge({ children, tone = "neutral" }: { children: string; tone?: "good" | "warn" | "neutral" }) {
+function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "good" | "warn" | "neutral" }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
