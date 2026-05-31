@@ -1,36 +1,4 @@
-export type Strategy = "lump-sum" | "monthly-dca";
-
-export interface PricePoint {
-  date: string;
-  open?: number;
-  high?: number;
-  low?: number;
-  close: number;
-  volume?: number;
-}
-
-export interface SimulationInput {
-  prices: PricePoint[];
-  initialCash: number;
-  monthlyContribution: number;
-  strategy: Strategy;
-}
-
-export interface SimulationPoint {
-  date: string;
-  price: number;
-  shares: number;
-  invested: number;
-  totalValue: number;
-}
-
-export interface SimulationResult {
-  firstDate: string;
-  lastDate: string;
-  finalValue: number;
-  totalInvested: number;
-  totalShares: number;
-  profit: number;
-  returnRate: number;
-  points: SimulationPoint[];
-}
+// Compatibility exports for old imports. Active types live in research, strategyAdvisor and execution.
+export type { BrokerApi, DataProvider, StrategyMethod, Trailing } from "./research";
+export type { OrderIntent, OrderPreview, OrderSide, OrderStyle, AssetClass } from "./execution";
+export type { StrategyProfile, Risk, Asset, Horizon, Budget } from "./strategyAdvisor";
